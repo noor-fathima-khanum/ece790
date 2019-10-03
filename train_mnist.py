@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 import seaborn as sns
+from torch.utils.data.sampler import SubsetRandomSampler
 sns.set()
 
 import numpy as np
@@ -17,7 +18,7 @@ print('Using PyTorch version:', torch.__version__, ' Device:', device)
 
 
 # Database Download
-batch_size = 32
+batch_size = 64
 
 train_dataset = datasets.MNIST('./data', 
                                train=True, 
@@ -25,22 +26,40 @@ train_dataset = datasets.MNIST('./data',
                                transform=transforms.ToTensor())
 
 validation_dataset = datasets.MNIST('./data', 
+                               train=True, 
+                               download=True, 
+                               transform=transforms.ToTensor())
+                               
+test_dataset = datasets.MNIST('./data', 
                                     train=False, 
                                     transform=transforms.ToTensor())
 
-train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
-                                           batch_size=batch_size, 
-                                           shuffle=True)
-
-validation_loader = torch.utils.data.DataLoader(dataset=validation_dataset, 
+test_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
                                                 batch_size=batch_size, 
                                                 shuffle=False)
 
+valid_size=0.1
+num_train = len(train_dataset)
+indices = list(range(num_train))
+split = int(np.floor(valid_size * num_train))
+len_train=num_train-split
+print ("NUM TRAIN,SPLIT",num_train,split)
+np.random.seed(35)
+np.random.shuffle(indices)
+train_idx, valid_idx = indices[split:], indices[:split]
+train_sampler = SubsetRandomSampler(train_idx)
+valid_sampler = SubsetRandomSampler(valid_idx)
+
+train_loader = torch.utils.data.DataLoader(train_dataset, 
+                    batch_size=batch_size, sampler=train_sampler)
+
+validation_loader = torch.utils.data.DataLoader(validation_dataset, 
+                    batch_size=batch_size, sampler=valid_sampler)
+                    
 for (X_train, y_train) in train_loader:
     print('X_train:', X_train.size(), 'type:', X_train.type())
     print('y_train:', y_train.size(), 'type:', y_train.type())
     break
-
 
 
 ## Model Definition
@@ -101,7 +120,7 @@ def train(epoch, log_interval=200):
         
         if batch_idx % log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
+                epoch, batch_idx * len(data), len_train,
                 100. * batch_idx / len(train_loader), loss.data.item()))
     
     torch.save({
@@ -126,14 +145,15 @@ def validate(loss_vector, accuracy_vector):
 
     val_loss /= len(validation_loader)
     loss_vector.append(val_loss)
-
-    accuracy = 100. * correct.to(torch.float32) / len(validation_loader.dataset)
+    
+    print ("CORRECT",correct)
+    accuracy = 100. * correct.to(torch.float32) / split
     accuracy_vector.append(accuracy)
     
-    print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        val_loss, correct, len(validation_loader.dataset), accuracy))
+    print('\nvalidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        val_loss, correct, split, accuracy))
 
-epochs = 5
+epochs = 50
 
 lossv, accv = [], []
 for epoch in range(1, epochs + 1):
@@ -148,6 +168,5 @@ plt.title('validation loss')
 plt.figure(figsize=(5,3))
 plt.plot(np.arange(1,epochs+1), accv)
 plt.title('validation accuracy');
-
 
         
